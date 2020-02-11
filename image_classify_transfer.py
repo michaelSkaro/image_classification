@@ -17,42 +17,42 @@ import h5py
 from nltk import flatten
 import re
 import pandas as pd
+import matplotlib.pyplot as plt
 
 import torch
+import torch.nn as nn
 import torch.nn.parallel
 import torch.utils.data as utils
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.optim as optim
+from torch.optim import lr_scheduler
 import torch.nn.functional as F
 from torch.utils.data.sampler import Sampler
 import torchvision
 from torchvision import datasets, models, transforms
+from torchvision.models.resnet import model_urls
+
+model_urls['resnet18']=model_urls['resnet18'].replace('https://', 'http://')
 
 # samplewholeselec=list(range(9995,10000))## the whole time series just for testing
 ##default parameters
 args_internal_dict={
-    "batch_size": (50000,int),
+    "batch_size": (4,int),
     "test_ratio": (0.2,float), # ratio of sample for test in each epoch
-    "test_batch_size": (50000,int),
+    "test_batch_size": (4,int),
     "epochs": (10,int),
-    "learning_rate": (0.01,float),
-    "momentum": (0.5,float),
+    "learning_rate": (0.001,float),
+    "momentum": (0.9,float),
     "no_cuda": (False,bool),
     "seed": (1,int),
     "log_interval": (10,int),
-    "net_struct": ("resnet18_mlp",str),
-    "layersize_ratio": (1.0,float),#use the input vector size to calcualte hidden layer size
-    "optimizer": ("adam",str),##adam
-    "normalize_flag": ("Y",str),#whether the input data in X are normalized Y normalized N not
-    "batchnorm_flag": ("Y",str),# whether batch normalization is used Y yes N no. Not working for resnet
-    "num_layer": (0,int),#number of layer, not work for resnet
-    "timetrainlen": (101,int), #the length of time-series to use in training
-    "inputfile": ("sparselinearode_new.small.stepwiseadd.mat",str),## the file name of input data
+    # "net_struct": ("resnet18_mlp",str),
+    # "optimizer": ("adam",str),##adam
      "p": (0.0,float),
-     "gpu_use": (1,int)# whehter use gpu 1 use 0 not use
-     "group": (3,int)#
+     "gpu_use": (1,int),# whehter use gpu 1 use 0 not use
+     # "groupsingle": (1,int)# 1 only classify figures with single groups. 0 Not supported yet(classify figures with multiple groups)
 }
 ###fixed parameters: for communication related parameter within one node
 fix_para_dict={#"world_size": (1,int),
@@ -66,19 +66,24 @@ fix_para_dict={#"world_size": (1,int),
 ##image transformation
 data_transforms = {
     'train': transforms.Compose([
+        transforms.Pad((0,174,0,174),fill=(255,255,255)),
+        transforms.Resize(256),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
     ]),
-    'val': transforms.Compose([
+    'test': transforms.Compose([
+        transforms.Pad((0,174,0,174),fill=(255,255,255)),
+        transforms.Resize(256),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
     ]),
 }
-inputdir="../data/LApops_expand/"
-def train(args,model,train_loader,optimizer,epoch,device,ntime):
+inputdir="../data/"
+def train(args,model,train_loader,optimizer,epoch,device):
     model.train()
-    trainloss=[]
+    trainloss=0.0
+    running_corrects=0
     for batch_idx, (data, target) in enumerate(train_loader):
         # print("checkerstart")
         # if args.gpu is not None:
@@ -87,23 +92,32 @@ def train(args,model,train_loader,optimizer,epoch,device,ntime):
         # target=target.cuda(args.gpu,non_blocking=True)
         data,target=data.to(device),target.to(device)
         output=model(data)
+        _,preds=torch.max(output,1)
         # loss=F.nll_loss(output,target)
-        loss=F.mse_loss(output,target,reduction='mean')
+        loss=F.cross_entropy(output,target,reduction='mean')
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        trainloss+=loss.item()*data.size(0)
+        corrclas=torch.sum(preds==target.data)
+        running_corrects+=corrclas
         if batch_idx % args.log_interval==0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss(per sample): {:.6f}'.format(
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss(per sample): {:.6f} accuracy {:.2f}'.format(
                 epoch,batch_idx*len(data),len(train_loader.dataset),
-                100. * batch_idx*len(data)/len(train_loader.dataset),loss.item()*ntime))
-                
-        trainloss.append(loss.item())
+                100. * batch_idx*len(data)/len(train_loader.dataset),loss.item(),corrclas.double()/args.batch_size))
     
-    return (sum(trainloss)/len(trainloss))*ntime
+    
+    epoch_loss=trainloss/dataset_sizes['train']
+    epoch_acc=running_corrects.double()/dataset_sizes['train']
+    
+    print('END Train Loss: {:.4f} Acc: {:.4f}'.format(epoch_loss,epoch_acc))
+    
+    return epoch_loss
 
-def test(args,model,test_loader,device,ntime):
+def test(args,model,test_loader,device):
     model.eval()
-    test_loss=[]
+    test_loss=0.0
+    running_corrects=0
     with torch.no_grad():
         for data, target in test_loader:
             # if args.gpu is not None:
@@ -111,11 +125,17 @@ def test(args,model,test_loader,device,ntime):
             # target=target.cuda(args.gpu,non_blocking=True)
             data,target=data.to(device),target.to(device)
             output=model(data)
-            # test_loss += F.nll_loss(output,target,reduction='sum').item() # sum up batch loss
-            test_loss.append(F.mse_loss(output,target,reduction='mean').item()) # sum
-    test_loss_mean=sum(test_loss)/len(test_loss)
-    print('\nTest set: Average loss (per sample): {:.4f}\n'.format(test_loss_mean*ntime))
-    return test_loss_mean*ntime
+            _,preds=torch.max(output,1)
+            # loss=F.nll_loss(output,target)
+            loss=F.cross_entropy(output,target,reduction='mean')
+            test_loss+=loss.item()*data.size(0)
+            running_corrects+=torch.sum(preds==target.data)
+    
+    epoch_loss=test_loss/dataset_sizes['test']
+    epoch_acc=running_corrects.double()/dataset_sizes['test']
+    
+    print('test Loss: {:.4f} Acc: {:.4f}'.format(epoch_loss,epoch_acc))
+    return epoch_loss
 
 def parse_func_wrap(parser,termname,args_internal_dict):
     commandstring='--'+termname.replace("_","-")
@@ -134,14 +154,45 @@ def save_checkpoint(state,is_best,is_best_train,filename='checkpoint.resnetode.t
     if is_best_train:
         shutil.copyfile(filename,'model_best_train.resnetode.tar')
 
-def make_square(im,min_size=1040,fill_color=(255,255,255)):
-    #adopped form Michael Skaro version
-    # it will create a white layer and plot the original image in the center
-    x,y=im.size
-    size=max(min_size,x,y)
-    new_im=Image.new('RGB',(size,size),fill_color)
-    new_im.paste(im, (int((size - x) / 2), int((size - y) / 2)))
-    return new_im
+def imshow(inp, title=None):
+    """Imshow for Tensor."""
+    #from https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
+    inp = inp.numpy().transpose((1, 2, 0))
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    inp = std * inp + mean
+    inp = np.clip(inp, 0, 1)
+    plt.imshow(inp)
+    if title is not None:
+        plt.title(title)
+    plt.pause(0.001)  # pause a bit so that plots are updated
+
+def visualize_model(model,dataloaders,num_images=6):
+    #from https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
+    was_training = model.training
+    model.eval()
+    images_so_far = 0
+    fig = plt.figure()
+
+    with torch.no_grad():
+        for i, (inputs, labels) in enumerate(dataloaders):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+
+            for j in range(inputs.size()[0]):
+                images_so_far += 1
+                ax = plt.subplot(num_images//2, 2, images_so_far)
+                ax.axis('off')
+                ax.set_title('predicted: {}, labels: {}'.format(class_names[preds[j]],class_names[labels[j]]))
+                imshow(inputs.cpu().data[j])
+
+                if images_so_far == num_images:
+                    model.train(mode=was_training)
+                    return
+        model.train(mode=was_training)
 
 def main():
     # Training settings load-in through command line
@@ -178,6 +229,7 @@ def main():
 
 def main_worker(gpu,ngpus_per_node,args):
     global best_acc1
+    global dataset_sizes
     # args.gpu=gpu
     # if args.gpu is not None:
     #     print("Use GPU: {} for training".format(args.gpu))
@@ -188,155 +240,27 @@ def main_worker(gpu,ngpus_per_node,args):
     ## dist.init_process_group(backend=args.dist_backend,init_method="env://",#args.dist_url,
     ## world_size=args.world_size,rank=args.rank)
     
-    ##load information table
-    datatab=pd.read_csv(inputdir+"Classifications.csv",delimiter=",")
-
-    file_names = data.loc[ : , 'IMG' ]
-    # resize image
-    for i in file_names:
-        test_image = Image.open(i)
-        new_image = make_square(test_image)
-        new_image.save(i+'resized_image.tif')
+    image_datasets={x: datasets.ImageFolder(os.path.join(inputdir,"LApops_classify",x),data_transforms[x]) for x in ['train','test']}
+    dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=args.batch_size,shuffle=True, num_workers=args.workers) for x in ['train','test']}
+    dataset_sizes={x: len(image_datasets[x]) for x in ['train','test']}
+    class_names=image_datasets['train'].classes
+    device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
-    inputfile=args.inputfile
-    f=h5py.File(inputdir+inputfile,'r')
-    data=f.get('inputstore')
-    Xvar=np.array(data).transpose()
-    data=f.get('outputstore')
-    ResponseVar=np.array(data).transpose()
-    data=f.get('samplevec')
-    samplevec=np.array(data)
-    samplevec=np.squeeze(samplevec.astype(int)-1)##block index
-    data=f.get('parastore')
-    parastore=np.array(data)##omega normalizer
-    data=f.get('nthetaset')
-    nthetaset=int(np.array(data)[0][0])##block number
-    data=f.get('ntime')
-    ntimetotal=int(np.array(data)[0][0])##time seq including [training part, extrapolation part]
-    f.close()
-    ntime=args.timetrainlen
-    # ResponseVarnorm=(ResponseVar-ResponseVar.mean(axis=0))/ResponseVar.std(axis=0)
-    ResponseVarnorm=ResponseVar## the response variable was originally scale by omega {scaling} but not centered. and not more normalization will be done
-    ##separation of train and test set
-    nsample=(Xvar.shape)[0]
-    ntheta=(Xvar.shape)[1]
-    nspec=(ResponseVarnorm.shape)[1]
-    simusamplevec=np.unique(samplevec)
-    ##test block number {each block is composed for multiple samples}
-    numsamptest=math.floor((simusamplevec.__len__())*args.test_ratio)
-    # testsize=numsamptest*ntimetotal##test sample number
-    sampleind=set(range(0,nsample))
-    simusampeind=set(range(0,nthetaset))
-    ## a preset whole time range for just testing
-    # samplewholeselec=np.sort(-np.unique(samplevec))[0:5]
-    simusamplevec=random.sample(set(simusampeind),numsamptest)
-    ##index or training and testing data
-    testind=np.sort(np.where(np.isin(samplevec,simusamplevec)))[0]
-    trainind=np.sort(np.array(list(sampleind.difference(set(testind)))))
-    # simusamplevec=random.sample(set(sampleind)-set(testaddon),testsize-testaddon.__len__())
-    # testaddon=np.where(np.isin(simusamplevec,samplewholeselec))[0]
-    # testaddon=np.where(np.isin(samplevec,samplewholeselec))[0]
-    # testrand=random.sample(set(sampleind)-set(testaddon),testsize-testaddon.__len__())
-    # testind=set(testrand)|set(testaddon)
-    ntrainset=nthetaset-numsamptest
-    ntestset=numsamptest
-    ##training block index (time range)
-    traintimeind=np.tile(np.concatenate((np.repeat(1,ntime),np.repeat(0,ntimetotal-ntime))),ntrainset)
-    testtimeind=np.tile(np.concatenate((np.repeat(1,ntime),np.repeat(0,ntimetotal-ntime))),ntestset)
-    train_in_ind=trainind[traintimeind==1]
-    test_in_ind=testind[testtimeind==1]
-    train_extr_ind=trainind[traintimeind==0]
-    test_extr_ind=testind[testtimeind==0]
-    ##train and test block ind
-    samplevectrain=samplevec[train_in_ind]
-    samplevectest=samplevec[test_in_ind]
+    # ##quick view the image
+    # inputs,classes=next(iter(dataloaders['train']))
+    # out=torchvision.utils.make_grid(inputs)
+    # imshow(out,title=[class_names[x] for x in classes])
     
-    Xvartrain=Xvar[list(trainind),:]
-    Xvartest=Xvar[list(testind),:]
-    Xvarnorm=np.empty_like(Xvar)
-    if args.normalize_flag is 'Y':
-        ##the normalization if exist should be after separation of training and testing data to prevent leaking
-        ##normalization (X-mean)/sd
-        ##normalization include time. Train and test model need to have at least same range or same mean&sd for time
-        Xvartrain_norm=(Xvartrain-Xvartrain.mean(axis=0))/Xvartrain.std(axis=0)
-        Xvartest_norm=(Xvartest-Xvartest.mean(axis=0))/Xvartest.std(axis=0)
-        Xvarnorm[list(trainind),:]=np.copy(Xvartrain_norm)
-        Xvarnorm[list(testind),:]=np.copy(Xvartest_norm)
-    else:
-        Xvartrain_norm=Xvartrain
-        Xvartest_norm=Xvartest
-        Xvarnorm=np.copy(Xvar)
-    
-    #samplevecXX repeat id vector, XXind index vector
-    inputwrap={"Xvarnorm": (Xvarnorm),
-        "ResponseVar": (ResponseVar),
-        "trainind": (trainind),
-        "testind": (testind),
-        "train_in_ind": (train_in_ind),
-        "test_in_ind": (test_in_ind),
-        "train_extr_ind": (train_extr_ind),
-        "test_extr_ind": (test_extr_ind),
-        # "testrand": (testrand),
-        # "testaddon": (testaddon),
-        "samplevec": (samplevec),
-        # "samplewholeselec": (samplewholeselec),
-        "samplevectrain": (samplevectrain),
-        "samplevectest": (samplevectest),
-        # "Xvarmean": (Xvarmean),## these two value: Xvarmean, Xvarstd can be used for "new" test data not used in the original normalization
-        # "Xvarstd": (Xvarstd),
-        "train_extr_ind": (train_extr_ind), ## the extrapolation point index on testing set
-        "test_extr_ind": (test_extr_ind), ## the extrapolation point index on training set
-        "inputfile": (inputfile),
-        "ngpus_per_node": (ngpus_per_node),## number of gpus
-        "numsamptest": (numsamptest),#number of testing samples
-        "traintimeind": (traintimeind),
-        "testtimeind": (testtimeind)
-    }
-    with open("pickle_inputwrap.dat","wb") as f1:
-        pickle.dump(inputwrap,f1,protocol=4)##protocol=4 if there is error: cannot serialize a bytes object larger than 4 GiB
-    
-    Xtensortrain=torch.Tensor(Xvarnorm[list(train_in_ind),:])
-    Resptensortrain=torch.Tensor(ResponseVar[list(train_in_ind),:])
-    Xtensortest=torch.Tensor(Xvarnorm[list(test_in_ind),:])
-    Resptensortest=torch.Tensor(ResponseVar[list(test_in_ind),:])
-    traindataset=utils.TensorDataset(Xtensortrain,Resptensortrain)
-    testdataset=utils.TensorDataset(Xtensortest,Resptensortest)
-    # train_sampler=torch.utils.data.distributed.DistributedSampler(traindataset)
-    nblocktrain=int(args.batch_size/ntime)
-    # nblocktest=int(args.test_batch_size/ntime)
-    train_sampler=batch_sampler_block(traindataset,samplevectrain,nblock=nblocktrain)
-    test_sampler=batch_sampler_block(testdataset,samplevectest,nblock=nblocktrain)
-    # traindataloader=utils.DataLoader(traindataset,batch_size=args.batch_size,
-    #     shuffle=(train_sampler is None),num_workers=args.workers,pin_memory=True,sampler=train_sampler)
-    #
-    # testdataloader=utils.DataLoader(testdataset,batch_size=args.test_batch_size,
-    #     shuffle=False,num_workers=args.workers,pin_memory=True,sampler=test_sampler)
-    traindataloader=utils.DataLoader(traindataset,num_workers=args.workers,pin_memory=True,batch_sampler=train_sampler)
-    testdataloader=utils.DataLoader(testdataset,num_workers=args.workers,pin_memory=True,batch_sampler=test_sampler)
-    ninnersize=int(args.layersize_ratio*ntheta)
     ##store data
-    with open("pickle_traindata.dat","wb") as f1:
-        pickle.dump(traindataloader,f1,protocol=4)
-    
-    with open("pickle_testdata.dat","wb") as f2:
-        pickle.dump(testdataloader,f2,protocol=4)
+    with open("pickle_dataloaders.dat","wb") as f1:
+        pickle.dump(dataloaders,f1,protocol=4)
     
     dimdict={
-        "nsample": (nsample,int),
-        "ntheta": (ntheta,int),
-        "nspec": (nspec,int),
-        "ninnersize": (ninnersize,int)
+        "dataset_sizes": (dataset_sizes,int),
     }
     with open("pickle_dimdata.dat","wb") as f3:
         pickle.dump(dimdict,f3,protocol=4)
-    
-    ##free up some space (not currently set)
-    ##create model
-    if bool(re.search("[rR]es[Nn]et",args.net_struct)):
-        model=models.__dict__[args.net_struct](ninput=ntheta,num_response=nspec,p=args.p,ncellscale=args.layersize_ratio)
-    else:
-        model=models.__dict__[args.net_struct](ninput=ntheta,num_response=nspec,nlayer=args.num_layer,p=args.p,ncellscale=args.layersize_ratio,batchnorm_flag=(args.batchnorm_flag is 'Y'))
-    
+        
     # model.eval()
     # if args.gpu is not None:
     #     torch.cuda.set_device(args.gpu)
@@ -351,26 +275,27 @@ def main_worker(gpu,ngpus_per_node,args):
     # DistributedDataParallel will divide and allocate batch_size to all
     # available GPUs if device_ids are not set
     
-    # model=torch.nn.DataParallel(model).cuda()
-    model=torch.nn.DataParallel(model)
+    model_ft=models.resnet18()
+    model_ft.load_state_dict(torch.load('../pretrained/resnet18-5c106cde.pth'))
+    num_ftrs=model_ft.fc.in_features
+    model_ft.fc=nn.Linear(num_ftrs,3)
+    model_ft=torch.nn.DataParallel(model_ft)
     if args.gpu_use==1:
         device=torch.device("cuda:0")#cpu
     else:
         device=torch.device("cpu")
     
-    model.to(device)
-    if args.optimizer=="sgd":
-        optimizer=optim.SGD(model.parameters(),lr=args.learning_rate,momentum=args.momentum)
-    elif args.optimizer=="adam":
-        optimizer=optim.Adam(model.parameters(),lr=args.learning_rate)
-    elif args.optimizer=="nesterov_momentum":
-        optimizer=optim.SGD(model.parameters(),lr=args.learning_rate,momentum=args.momentum,nesterov=True)
-    
+    model_ft.to(device)
+    optimizer=optim.SGD(model_ft.parameters(),lr=args.learning_rate,momentum=args.momentum)
+    ## lr decay scheduler
+    scheduler=lr_scheduler.StepLR(optimizer,step_size=7,gamma=0.1)
     cudnn.benchmark=True
     ##model training
     for epoch in range(1,args.epochs+1):
-        acctr=train(args,model,traindataloader,optimizer,epoch,device,ntime)
-        acc1=test(args,model,testdataloader,device,ntime)
+        acctr=train(args,model_ft,dataloaders['train'],optimizer,epoch,device)
+        acc1=test(args,model_ft,dataloaders['test'],device)
+        if scheduler is not None:
+            scheduler.step()
         # test(args,model,traindataloader,device,ntime) # to record the performance on training sample with model.eval()
         if epoch==1:
             best_acc1=acc1
@@ -384,8 +309,8 @@ def main_worker(gpu,ngpus_per_node,args):
         best_train_acc=min(acctr,best_train_acc)
         save_checkpoint({
             'epoch': epoch,
-            'arch': args.net_struct,
-            'state_dict': model.state_dict(),
+            # 'arch': args.net_struct,
+            'state_dict': model_ft.state_dict(),
             'best_acc1': best_acc1,
             'best_acctr': best_train_acc,
             'optimizer': optimizer.state_dict(),
@@ -394,6 +319,8 @@ def main_worker(gpu,ngpus_per_node,args):
         # device=torch.device('cpu')
         # # model=TheModelClass(*args, **kwargs)
         # model.load_state_dict(torch.load('./1/checkpoint.resnetode.tar',map_location=device))
+    
+    # visualize_model(model_ft,dataloaders['test'])
 
 if __name__ == '__main__':
     main()
