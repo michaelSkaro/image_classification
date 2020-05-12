@@ -36,26 +36,36 @@ datatab=pd.read_csv(inputdir+"Classifications.csv",delimiter=",")
 classcol=np.array(datatab['CLASS'].tolist())
 rowind=np.isin(classcol,np.array(['WRAP','WT','BULKY']))
 datatabclean=datatab.loc[rowind]
+nonduplicated_ind=[not ele for ele in datatabclean['IMG'].duplicated(keep=False).tolist()]
+datatabclean2=datatabclean.loc(nonduplicated_ind)
 
 # file_names=datatabclean.loc[:,'IMG']
-classlab=np.unique(datatabclean['CLASS'].tolist())
-counterlist=Counter(datatabclean['CLASS'].tolist())
+classlab=np.unique(datatabclean2['CLASS'].tolist())
+counterlist=Counter(datatabclean2['CLASS'].tolist())
 totsampsize=min(counterlist.values())# for each class
 numsamptest=math.floor(totsampsize*testperc)
 sampleind=set(range(0,totsampsize))
 testind=np.sort(np.array(random.sample(sampleind,numsamptest)))
 trainind=np.sort(np.array(list(sampleind.difference(set(testind)))))
 
-# load resize image
+os.makedirs(inputdir+'LApops_classify',exist_ok=True)
+os.makedirs(inputdir+'LApops_expand',exist_ok=True)
 os.makedirs(inputdir+'LApops_classify/train',exist_ok=True)
 os.makedirs(inputdir+'LApops_classify/test',exist_ok=True)
+for direle in os.listdir(inputdir+'LApops_Raw'):
+    if os.path.isdir(inputdir+'LApops_Raw/'+direle):
+        for fileele in os.listdir(inputdir+'LApops_Raw/'+direle):
+            sourcfile=inputdir+'LApops_Raw/'+direle+'/'+fileele
+            targetfile=inputdir+'LApops_expand/'+fileele
+            shutil.copy(sourcfile,targetfile)
+
 random.seed(1)
 for classele in classlab:
     os.makedirs(inputdir+'LApops_classify/train/'+classele,exist_ok=True)
     os.makedirs(inputdir+'LApops_classify/test/'+classele,exist_ok=True)
-    classcol=np.array(datatabclean['CLASS'].tolist())
+    classcol=np.array(datatabclean2['CLASS'].tolist())
     rowind=np.isin(classcol,classele)
-    datatabsub=datatabclean.loc[rowind]
+    datatabsub=datatabclean2.loc[rowind]
     totsamp_ind=np.array(random.sample(list(range(0,datatabsub.shape[0])),totsampsize))
     datatabsub2=datatabsub.iloc[totsamp_ind]
     files=np.array(datatabsub2['IMG'].tolist())
@@ -64,9 +74,13 @@ for classele in classlab:
         sourcfile=inputdir+"LApops_expand/"+file
         if os.path.isfile(sourcfile):
             shutil.copy(sourcfile,inputdir+'LApops_classify/train/'+classele+"/"+file)
+        else:
+            print('non existence file:'+file+'\n')
     
     for file in files[testind]:
         file=file+'.tif'
         sourcfile=inputdir+"LApops_expand/"+file
         if os.path.isfile(sourcfile):
             shutil.copy(sourcfile,inputdir+'LApops_classify/test/'+classele+"/"+file)
+        else:
+            print('non existence file:'+file+'\n')
