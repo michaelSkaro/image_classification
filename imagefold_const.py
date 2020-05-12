@@ -37,7 +37,7 @@ classcol=np.array(datatab['CLASS'].tolist())
 rowind=np.isin(classcol,np.array(['WRAP','WT','BULKY']))
 datatabclean=datatab.loc[rowind]
 nonduplicated_ind=[not ele for ele in datatabclean['IMG'].duplicated(keep=False).tolist()]
-datatabclean2=datatabclean.loc(nonduplicated_ind)
+datatabclean2=datatabclean.loc[nonduplicated_ind]
 
 # file_names=datatabclean.loc[:,'IMG']
 classlab=np.unique(datatabclean2['CLASS'].tolist())
