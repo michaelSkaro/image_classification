@@ -31,7 +31,7 @@ from torch.utils.data.sampler import Sampler
 import torchvision
 from torchvision import datasets, models, transforms
 inputdir="../data/"
-testperc=0.2
+testperc=[0.1,0.1]#valid and test
 datatab=pd.read_csv(inputdir+"Classifications.csv",delimiter=",")
 classcol=np.array(datatab['CLASS'].tolist())
 rowind=np.isin(classcol,np.array(['WRAP','WT','BULKY']))
@@ -43,15 +43,20 @@ datatabclean2=datatabclean.loc[nonduplicated_ind]
 classlab=np.unique(datatabclean2['CLASS'].tolist())
 counterlist=Counter(datatabclean2['CLASS'].tolist())
 totsampsize=min(counterlist.values())# for each class
-numsamptest=math.floor(totsampsize*testperc)
+numsampvalid=math.floor(totsampsize*testperc[0])
+numsamptest=math.floor(totsampsize*testperc[1])
 sampleind=set(range(0,totsampsize))
 testind=np.sort(np.array(random.sample(sampleind,numsamptest)))
-trainind=np.sort(np.array(list(sampleind.difference(set(testind)))))
+validind=np.sort(np.array(random.sample(sampleind,numsampvalid)))
+testindset=set(testind)
+validindset=set(validind)
+trainind=np.sort(np.array(list(sampleind.difference(testindset.union(validindset)))))
 
 os.makedirs(inputdir+'LApops_classify',exist_ok=True)
 os.makedirs(inputdir+'LApops_expand',exist_ok=True)
 os.makedirs(inputdir+'LApops_classify/train',exist_ok=True)
 os.makedirs(inputdir+'LApops_classify/test',exist_ok=True)
+os.makedirs(inputdir+'LApops_classify/validate',exist_ok=True)
 for direle in os.listdir(inputdir+'LApops_Raw'):
     if os.path.isdir(inputdir+'LApops_Raw/'+direle):
         for fileele in os.listdir(inputdir+'LApops_Raw/'+direle):
@@ -63,6 +68,7 @@ random.seed(1)
 for classele in classlab:
     os.makedirs(inputdir+'LApops_classify/train/'+classele,exist_ok=True)
     os.makedirs(inputdir+'LApops_classify/test/'+classele,exist_ok=True)
+    os.makedirs(inputdir+'LApops_classify/validate/'+classele,exist_ok=True)
     classcol=np.array(datatabclean2['CLASS'].tolist())
     rowind=np.isin(classcol,classele)
     datatabsub=datatabclean2.loc[rowind]
@@ -82,5 +88,13 @@ for classele in classlab:
         sourcfile=inputdir+"LApops_expand/"+file
         if os.path.isfile(sourcfile):
             shutil.copy(sourcfile,inputdir+'LApops_classify/test/'+classele+"/"+file)
+        else:
+            print('non existence file:'+file+'\n')
+            
+    for file in files[validind]:
+        file=file+'.tif'
+        sourcfile=inputdir+"LApops_expand/"+file
+        if os.path.isfile(sourcfile):
+            shutil.copy(sourcfile,inputdir+'LApops_classify/validate/'+classele+"/"+file)
         else:
             print('non existence file:'+file+'\n')
