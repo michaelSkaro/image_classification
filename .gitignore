@@ -5,3 +5,4 @@
 /*.out
 *.Rhistory
 *.swp
+.DS_Store
