@@ -34,8 +34,15 @@ import torchvision
 from torchvision import datasets, models, transforms
 from torchvision.models.resnet import model_urls
 
-model_urls['resnet18']=model_urls['resnet18'].replace('https://', 'http://')
+# model_urls['resnet18']=model_urls['resnet18'].replace('https://', 'http://')
 
+listmodelfile={
+    "resnet18": ('resnet18-5c106cde.pth',str),
+    "resnet34": ('resnet34-333f7ec4.pth',str),
+    "resnet50": ('resnet50-19c8e357.pth',str),
+    "resnet101": ('resnet101-5d3b4d8f.pth',str),
+    "resnet152": ('resnet152-b121ed2d.pth',str)
+}
 # samplewholeselec=list(range(9995,10000))## the whole time series just for testing
 ##default parameters
 args_internal_dict={
@@ -48,10 +55,12 @@ args_internal_dict={
     "no_cuda": (False,bool),
     "seed": (1,int),
     "log_interval": (10,int),
-    # "net_struct": ("resnet18_mlp",str),
-    # "optimizer": ("adam",str),##adam
+    "net_struct": ("resnet18",str),
+    "optimizer": ("adam",str),##adam
      "p": (0.0,float),
      "gpu_use": (1,int),# whehter use gpu 1 use 0 not use
+     "freeze_till": ('layer4',str), #till n block ResNet18 has 10 blocks
+     "pretrained": (1,int)
      # "groupsingle": (1,int)# 1 only classify figures with single groups. 0 Not supported yet(classify figures with multiple groups)
 }
 ###fixed parameters: for communication related parameter within one node
@@ -69,10 +78,18 @@ data_transforms = {
         transforms.Pad((0,174,0,174),fill=(255,255,255)),
         transforms.Resize(256),
         transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(degrees=360),
+        transforms.RandomGrayscale(),
         transforms.ToTensor(),
         transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
     ]),
     'test': transforms.Compose([
+        transforms.Pad((0,174,0,174),fill=(255,255,255)),
+        transforms.Resize(256),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+    ]),
+    'validate': transforms.Compose([
         transforms.Pad((0,174,0,174),fill=(255,255,255)),
         transforms.Resize(256),
         transforms.ToTensor(),
@@ -102,10 +119,10 @@ def train(args,model,train_loader,optimizer,epoch,device):
         corrclas=torch.sum(preds==target.data)
         running_corrects+=corrclas
         if batch_idx % args.log_interval==0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss(per sample): {:.6f} accuracy {:.2f}'.format(
+            lrstr=' lr: '+str(get_lr(optimizer))
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss(per sample): {:.6f} accuracy {:.2f} lr{}'.format(
                 epoch,batch_idx*len(data),len(train_loader.dataset),
-                100. * batch_idx*len(data)/len(train_loader.dataset),loss.item(),corrclas.double()/args.batch_size))
-    
+                100. * batch_idx*len(data)/len(train_loader.dataset),loss.item(),corrclas.double()/args.batch_size,lrstr))
     
     epoch_loss=trainloss/dataset_sizes['train']
     epoch_acc=running_corrects.double()/dataset_sizes['train']
@@ -194,6 +211,10 @@ def visualize_model(model,dataloaders,num_images=6):
                     return
         model.train(mode=was_training)
 
+def get_lr(optimizer):#output the lr as scheduler is used
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+
 def main():
     # Training settings load-in through command line
     parser=argparse.ArgumentParser(description='PyTorch Example')
@@ -240,11 +261,11 @@ def main_worker(gpu,ngpus_per_node,args):
     ## dist.init_process_group(backend=args.dist_backend,init_method="env://",#args.dist_url,
     ## world_size=args.world_size,rank=args.rank)
     
-    image_datasets={x: datasets.ImageFolder(os.path.join(inputdir,"LApops_classify",x),data_transforms[x]) for x in ['train','test']}
-    dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=args.batch_size,shuffle=True, num_workers=args.workers) for x in ['train','test']}
-    dataset_sizes={x: len(image_datasets[x]) for x in ['train','test']}
+    image_datasets={x: datasets.ImageFolder(os.path.join(inputdir,"LApops_classify",x),data_transforms[x]) for x in ['train','validate','test']}
+    dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=args.batch_size,shuffle=True, num_workers=args.workers) for x in ['train','validate','test']}
+    dataset_sizes={x: len(image_datasets[x]) for x in ['train','validate','test']}
     class_names=image_datasets['train'].classes
-    device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
     # ##quick view the image
     # inputs,classes=next(iter(dataloaders['train']))
@@ -275,10 +296,37 @@ def main_worker(gpu,ngpus_per_node,args):
     # DistributedDataParallel will divide and allocate batch_size to all
     # available GPUs if device_ids are not set
     
-    model_ft=models.resnet18()
-    model_ft.load_state_dict(torch.load('../pretrained/resnet18-5c106cde.pth'))
+    # model_ft=models.resnet18()
+    model_ft=models.__dict__[args.net_struct]()
+    print(args.net_struct)
+    if args.pretrained==1:
+        model_ft.load_state_dict(torch.load('../pretrained/'+listmodelfile[args.net_struct][0]))
+        
     num_ftrs=model_ft.fc.in_features
     model_ft.fc=nn.Linear(num_ftrs,3)
+    if args.pretrained==1:
+        paracounter=0
+        for name, param in model_ft.named_parameters():
+            if not bool(re.search(args.freeze_till,name)):
+                # print(name)
+                param.requires_grad=False
+            else:
+                break
+            paracounter=paracounter+1
+    
+    # counti=0
+    # for name, param in model_ft.named_parameters():#len(model_ft.state_dict())
+    #         print(name)
+    #         counti=counti+1
+    
+    # match='layer4.0.conv1.weight'
+    # counti=1
+    # for name, param in model_ft.named_parameters():
+    #     # print(name)
+    #     if name==match:
+    #         print(counti)
+    #     counti=counti+1
+    
     model_ft=torch.nn.DataParallel(model_ft)
     if args.gpu_use==1:
         device=torch.device("cuda:0")#cpu
@@ -286,16 +334,22 @@ def main_worker(gpu,ngpus_per_node,args):
         device=torch.device("cpu")
     
     model_ft.to(device)
-    optimizer=optim.SGD(model_ft.parameters(),lr=args.learning_rate,momentum=args.momentum)
+    if args.optimizer=="sgd":
+        optimizer=optim.SGD(model_ft.parameters(),lr=args.learning_rate,momentum=args.momentum)
+    elif args.optimizer=="adam":
+        optimizer=optim.Adam(model_ft.parameters(),lr=args.learning_rate)
+    
+    # optimizer=optim.Adam(model_ft.parameters(),lr=args.learning_rate)
     ## lr decay scheduler
-    scheduler=lr_scheduler.StepLR(optimizer,step_size=7,gamma=0.1)
+    # scheduler=lr_scheduler.StepLR(optimizer,step_size=20,gamma=0.5)
+    scheduler=lr_scheduler.ReduceLROnPlateau(optimizer,'min',factor=0.5)
     cudnn.benchmark=True
     ##model training
     for epoch in range(1,args.epochs+1):
         acctr=train(args,model_ft,dataloaders['train'],optimizer,epoch,device)
         acc1=test(args,model_ft,dataloaders['test'],device)
         if scheduler is not None:
-            scheduler.step()
+            scheduler.step(acc1)
         # test(args,model,traindataloader,device,ntime) # to record the performance on training sample with model.eval()
         if epoch==1:
             best_acc1=acc1
@@ -309,7 +363,7 @@ def main_worker(gpu,ngpus_per_node,args):
         best_train_acc=min(acctr,best_train_acc)
         save_checkpoint({
             'epoch': epoch,
-            # 'arch': args.net_struct,
+            'arch': args.net_struct,
             'state_dict': model_ft.state_dict(),
             'best_acc1': best_acc1,
             'best_acctr': best_train_acc,
@@ -321,6 +375,7 @@ def main_worker(gpu,ngpus_per_node,args):
         # model.load_state_dict(torch.load('./1/checkpoint.resnetode.tar',map_location=device))
     
     # visualize_model(model_ft,dataloaders['test'])
+    acc1=test(args,model_ft,dataloaders['validate'],device)
 
 if __name__ == '__main__':
     main()
