@@ -78,7 +78,7 @@ data_transforms = {
         transforms.Pad((0,174,0,174),fill=(255,255,255)),
         transforms.Resize(256),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(degrees=360),
+        transforms.RandomRotation(degrees=360,fill=(255,255,255)),
         transforms.RandomGrayscale(),
         transforms.ToTensor(),
         transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
