@@ -30,6 +30,8 @@ import torch.nn.functional as F
 from torch.utils.data.sampler import Sampler
 import torchvision
 from torchvision import datasets, models, transforms
+
+# For training data
 inputdir="../data/"
 testperc=[0.1,0.1]#valid and test
 datatab=pd.read_csv(inputdir+"Classifications.csv",delimiter=",")
@@ -98,3 +100,22 @@ for classele in classlab:
             shutil.copy(sourcfile,inputdir+'LApops_classify/validate/'+classele+"/"+file)
         else:
             print('non existence file:'+file+'\n')
+
+# For external test data set
+inputdir="../data/LApops_new_Raw/"
+outputdir="../data/LApops_new_test/test/"
+classtypes=np.array(['WRAP','WT','BULKY'])
+for classtype in classtypes:
+    os.makedirs(outputdir+classtype,exist_ok=True)
+
+infortab_list=[]
+for batchdir in os.listdir(inputdir):
+    if batchdir=='.DS_Store':
+        continue
+    
+    datatab=pd.read_csv(inputdir+batchdir+"/Classifications.csv",delimiter=",")
+    infortab_list.append(datatab)
+    for rowi in range(datatab.shape[0]):
+        sample=datatab.iloc[rowi,]
+        shutil.copy(inputdir+batchdir+
+        "/"+sample[0]+"/"+sample[1]+".tif",outputdir+sample[2]+"/"+sample[1]+".tif")
