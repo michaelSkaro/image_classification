@@ -151,7 +151,7 @@ def visualize_model(model,dataloaderslc,num_images=6):
 seed=2
 random.seed(seed)
 torch.manual_seed(seed)
-inputdir="./"
+inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/runs/resrun_rep/"
 os.chdir(inputdir)
 ##load information table
 infortab=pd.read_csv(inputdir+'submitlist.tab',sep="\t",header=0)
@@ -181,8 +181,8 @@ test(args,model_ft,dataloaders['validate'],device,dataset_sizes['validate'])
 test(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
 
 train_tab_metric=metrics_eval(args,model_ft,dataloaders['train'],device,dataset_sizes['train'])
-test_tab_metric=metrics_eval(args,model_ft,dataloaders['validate'],device,dataset_sizes['validate'])
-validate_tab_metric=metrics_eval(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
+validate_tab_metric=metrics_eval(args,model_ft,dataloaders['validate'],device,dataset_sizes['validate'])
+test_tab_metric=metrics_eval(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
 
 fig=visualize_model(model_ft,dataloaders['validate'],6)
 fig.savefig(inputdir+"res/validate.pdf")
@@ -204,8 +204,9 @@ print(args.net_struct)
 model_ft=torch.nn.DataParallel(model_ft)
 if args.pretrained==1:
     model_ft.load_state_dict(loaddic['state_dict'])
-acc1=test(args,model_ft,dataloaders['test'],device)
-acc1=test(args,model_ft,dataloaders['validate'],device)
 
-visualize_model(model_ft,dataloaders['test'])
-visualize_model(model_ft,dataloaders['validate'])
+test(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
+validate_tab_metric=metrics_eval(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
+fig=visualize_model(model_ft,dataloaders['test'],6)
+fig.savefig(inputdir+"res/extenal_test.pdf")
+plt.cla()
