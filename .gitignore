@@ -6,3 +6,5 @@
 *.Rhistory
 *.swp
 .DS_Store
+*/__pycache__/*
+*/archive/*
