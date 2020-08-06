@@ -32,7 +32,7 @@ import torchvision
 from torchvision import datasets, models, transforms
 
 # For training data
-inputdir="../data/"
+inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/data/"
 testperc=[0.1,0.1]#valid and test
 datatab=pd.read_csv(inputdir+"Classifications.csv",delimiter=",")
 classcol=np.array(datatab['CLASS'].tolist())
@@ -102,8 +102,8 @@ for classele in classlab:
             print('non existence file:'+file+'\n')
 
 # For external test data set
-inputdir="../data/LApops_new_Raw/"
-outputdir="../data/LApops_new_test/test/"
+inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/data/LApops_new_Raw/"
+outputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/data/LApops_new_test/test/"
 classtypes=np.array(['WRAP','WT','BULKY'])
 for classtype in classtypes:
     os.makedirs(outputdir+classtype,exist_ok=True)

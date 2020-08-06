@@ -1,6 +1,7 @@
 ##this training script support
 ## this will download trained ResNet18 structure and retrain on N.C. root image
 ## tutorial on transfer learning https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
+## this is run with on a sever, pytorch 1.5.0, torchvision 0.6.0a0+82fd1c8, and CUDA 9.2
 import argparse
 import os
 import random
@@ -129,7 +130,7 @@ def train(args,model,train_loader,optimizer,epoch,device):
     
     print('END Train Loss: {:.4f} Acc: {:.4f}'.format(epoch_loss,epoch_acc))
     
-    return epoch_loss
+    return epoch_acc
 
 def test(args,model,test_loader,device):
     model.eval()
@@ -152,7 +153,7 @@ def test(args,model,test_loader,device):
     epoch_acc=running_corrects.double()/dataset_sizes['test']
     
     print('test Loss: {:.4f} Acc: {:.4f}'.format(epoch_loss,epoch_acc))
-    return epoch_loss
+    return epoch_acc
 
 def parse_func_wrap(parser,termname,args_internal_dict):
     commandstring='--'+termname.replace("_","-")
@@ -342,12 +343,12 @@ def main_worker(gpu,ngpus_per_node,args):
     # optimizer=optim.Adam(model_ft.parameters(),lr=args.learning_rate)
     ## lr decay scheduler
     # scheduler=lr_scheduler.StepLR(optimizer,step_size=20,gamma=0.5)
-    scheduler=lr_scheduler.ReduceLROnPlateau(optimizer,'min',factor=0.5)
+    scheduler=lr_scheduler.ReduceLROnPlateau(optimizer,'max',factor=0.5)
     cudnn.benchmark=True
     ##model training
     for epoch in range(1,args.epochs+1):
         acctr=train(args,model_ft,dataloaders['train'],optimizer,epoch,device)
-        acc1=test(args,model_ft,dataloaders['test'],device)
+        acc1=test(args,model_ft,dataloaders['validate'],device)##validation run
         if scheduler is not None:
             scheduler.step(acc1)
         # test(args,model,traindataloader,device,ntime) # to record the performance on training sample with model.eval()
@@ -356,11 +357,11 @@ def main_worker(gpu,ngpus_per_node,args):
             best_train_acc=acctr
         
         # is_best=acc1>best_acc1
-        is_best=acc1<best_acc1
-        is_best_train=acctr<best_train_acc
+        is_best=acc1>best_acc1
+        is_best_train=acctr>best_train_acc
         # best_acc1=max(acc1,best_acc1)
-        best_acc1=min(acc1,best_acc1)
-        best_train_acc=min(acctr,best_train_acc)
+        best_acc1=max(acc1,best_acc1)
+        best_train_acc=max(acctr,best_train_acc)
         save_checkpoint({
             'epoch': epoch,
             'arch': args.net_struct,
@@ -375,7 +376,7 @@ def main_worker(gpu,ngpus_per_node,args):
         # model.load_state_dict(torch.load('./1/checkpoint.resnetode.tar',map_location=device))
     
     # visualize_model(model_ft,dataloaders['test'])
-    acc1=test(args,model_ft,dataloaders['validate'],device)
+    acc1_test=test(args,model_ft,dataloaders['test'],device)##test and validate with same size
 
 if __name__ == '__main__':
     main()
