@@ -173,8 +173,7 @@ num_ftrs=model_ft.fc.in_features
 model_ft.fc=nn.Linear(num_ftrs,3)
 print(args.net_struct)
 model_ft=torch.nn.DataParallel(model_ft)
-if args.pretrained==1:
-    model_ft.load_state_dict(loaddic['state_dict'])
+model_ft.load_state_dict(loaddic['state_dict'])
 
 test(args,model_ft,dataloaders['train'],device,dataset_sizes['train'])
 test(args,model_ft,dataloaders['validate'],device,dataset_sizes['validate'])
@@ -210,8 +209,7 @@ num_ftrs=model_ft.fc.in_features
 model_ft.fc=nn.Linear(num_ftrs,3)
 print(args.net_struct)
 model_ft=torch.nn.DataParallel(model_ft)
-if args.pretrained==1:
-    model_ft.load_state_dict(loaddic['state_dict'])
+model_ft.load_state_dict(loaddic['state_dict'])
 
 test(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
 test_tab_metric=metrics_eval(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
