@@ -165,7 +165,7 @@ device=torch.device('cpu')
 loaddic=torch.load("./res/"+str(rowi)+"/model_best.resnetode.tar",map_location=device)
 args=loaddic["args_input"]
 image_datasets={x: datasets.ImageFolder(os.path.join("./data/LApops_classify/",x),data_transforms[x]) for x in ['train','validate','test']}
-dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=1,shuffle=False, num_workers=0) for x in ['train','validate','test']}
+dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=args.batch_size,shuffle=True, num_workers=0) for x in ['train','validate','test']}
 dataset_sizes={x: len(image_datasets[x]) for x in ['train','validate','test']}
 class_names=image_datasets['train'].classes
 model_ft=models.__dict__[args.net_struct]()
@@ -193,7 +193,7 @@ plt.cla()
 
 # accuracy by class(phenotypes)
 image_datasets_test={x: datasets.ImageFolder(os.path.join("./data/LApops_classify_class/",x),data_transforms['test']) for x in ['BULKY','WRAP','WT']}
-dataloaders_test={x: torch.utils.data.DataLoader(image_datasets_test[x],batch_size=1,shuffle=False, num_workers=0) for x in ['BULKY','WRAP','WT']}
+dataloaders_test={x: torch.utils.data.DataLoader(image_datasets_test[x],batch_size=args.batch_size,shuffle=True, num_workers=0) for x in ['BULKY','WRAP','WT']}
 dataset_sizes={x: len(image_datasets_test[x]) for x in ['BULKY','WRAP','WT']}
 
 for classtype in ['BULKY','WRAP','WT']:
