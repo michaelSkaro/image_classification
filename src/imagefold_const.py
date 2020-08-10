@@ -117,5 +117,6 @@ for batchdir in os.listdir(inputdir):
     infortab_list.append(datatab)
     for rowi in range(datatab.shape[0]):
         sample=datatab.iloc[rowi,]
-        shutil.copy(inputdir+batchdir+
-        "/"+sample[0]+"/"+sample[1]+".tif",outputdir+sample[2]+"/"+sample[1]+".tif")
+        if any(sample[2] in s for s in classtypes):
+            shutil.copy(inputdir+batchdir+
+            "/"+str(sample[0])+"/"+sample[1]+".tif",outputdir+sample[2]+"/"+sample[1]+".tif")
