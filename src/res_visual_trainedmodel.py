@@ -165,7 +165,7 @@ device=torch.device('cpu')
 loaddic=torch.load("./res/"+str(rowi)+"/model_best.resnetode.tar",map_location=device)
 args=loaddic["args_input"]
 image_datasets={x: datasets.ImageFolder(os.path.join("./data/LApops_classify/",x),data_transforms[x]) for x in ['train','validate','test']}
-dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=args.batch_size,shuffle=True, num_workers=0) for x in ['train','validate','test']}
+dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=1,shuffle=False, num_workers=0) for x in ['train','validate','test']}
 dataset_sizes={x: len(image_datasets[x]) for x in ['train','validate','test']}
 class_names=image_datasets['train'].classes
 model_ft=models.__dict__[args.net_struct]()
@@ -191,12 +191,20 @@ fig=visualize_model(model_ft,dataloaders['test'],6)
 fig.savefig(inputdir+"res/test.pdf")
 plt.cla()
 
+# accuracy by class(phenotypes)
+image_datasets_test={x: datasets.ImageFolder(os.path.join("./data/LApops_classify_class/",x),data_transforms['test']) for x in ['BULKY','WRAP','WT']}
+dataloaders_test={x: torch.utils.data.DataLoader(image_datasets_test[x],batch_size=1,shuffle=False, num_workers=0) for x in ['BULKY','WRAP','WT']}
+dataset_sizes={x: len(image_datasets_test[x]) for x in ['BULKY','WRAP','WT']}
+
+for classtype in ['BULKY','WRAP','WT']:
+    test(args,model_ft,dataloaders_test[classtype],device,dataset_sizes[classtype])
+
 
 # For the extenal test set
 image_datasets={x: datasets.ImageFolder(os.path.join("../../data/","LApops_new_test",x),data_transforms[x]) for x in ['test']}
 dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=args.batch_size,shuffle=True, num_workers=0) for x in ['test']}
 dataset_sizes={x: len(image_datasets[x]) for x in ['test']}
-class_names=image_datasets['train'].classes
+class_names=image_datasets['test'].classes
 model_ft=models.__dict__[args.net_struct]()
 num_ftrs=model_ft.fc.in_features
 model_ft.fc=nn.Linear(num_ftrs,3)
@@ -206,7 +214,7 @@ if args.pretrained==1:
     model_ft.load_state_dict(loaddic['state_dict'])
 
 test(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
-validate_tab_metric=metrics_eval(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
+test_tab_metric=metrics_eval(args,model_ft,dataloaders['test'],device,dataset_sizes['test'])
 fig=visualize_model(model_ft,dataloaders['test'],6)
 fig.savefig(inputdir+"res/extenal_test.pdf")
 plt.cla()
