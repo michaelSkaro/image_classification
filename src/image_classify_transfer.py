@@ -82,7 +82,7 @@ data_transforms = {
         transforms.RandomRotation(degrees=360,fill=(255,255,255)),
         transforms.RandomGrayscale(),
         transforms.ToTensor(),#convert image to matrix with value [0 1]
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])##these magic numbers are 'population' mean
     ]),
     'test': transforms.Compose([
         transforms.Pad((0,174,0,174),fill=(255,255,255)),
