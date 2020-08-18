@@ -145,17 +145,17 @@ rundir=outputdir+'test'
 os.makedirs(rundir,exist_ok=True)
 classtypes=np.array(['WRAP','WT','BULKY'])
 for classtype in classtypes:
-    os.makedirs(rundir+classtype,exist_ok=True)
+    os.makedirs(rundir+'/'+classtype,exist_ok=True)
 
 infortab_list=[]
-for batchdir in os.listdir(inputdir):
+for batchdir in os.listdir(sourcedir):
     if batchdir=='.DS_Store':
         continue
     
-    datatab=pd.read_csv(inputdir+batchdir+"/Classifications.csv",delimiter=",")
+    datatab=pd.read_csv(sourcedir+batchdir+"/Classifications.csv",delimiter=",")
     infortab_list.append(datatab)
     for rowi in range(datatab.shape[0]):
         sample=datatab.iloc[rowi,]
         if any(sample[2] in s for s in classtypes):
-            shutil.copy(inputdir+batchdir+
-            "/"+str(sample[0])+"/"+sample[1]+".tif",outputdir+sample[2]+"/"+sample[1]+".tif")
+            shutil.copy(sourcedir+batchdir+
+            "/"+str(sample[0])+"/"+sample[1]+".tif",rundir+"/"+sample[2]+"/"+sample[1]+".tif")
