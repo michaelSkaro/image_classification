@@ -10,7 +10,6 @@ import shutil
 import time
 import warnings
 import pickle
-# import feather
 import numpy as np
 import math
 import sys
@@ -39,9 +38,7 @@ from captum.attr import GradientShap
 from captum.attr import Occlusion
 from captum.attr import NoiseTunnel
 from captum.attr import visualization as viz
-# from captum.attr import DeepLift
 from captum.attr import Saliency
-# sys.path.insert(1,'/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/nc_model/nnt/model_training/')
 data_transforms = {
     'train': transforms.Compose([
         transforms.Pad((0,174,0,174),fill=(255,255,255)),
@@ -82,12 +79,12 @@ def imshow(inp, title=None):
 seed=2
 random.seed(seed)
 torch.manual_seed(seed)
-inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/runs/run_publish_final/"
+inputdir="LOCAL_PROJ_FOLDER"
 os.chdir(inputdir)
 
 global dataset_sizes
 ##check validate data set
-rowi=5
+rowi=5#model 5 is the final chosen model
 device=torch.device('cpu')
 ##Loading data
 loaddic=torch.load("./res/"+str(rowi)+"/model_best.resnetode.tar",map_location=device)

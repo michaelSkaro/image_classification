@@ -9,7 +9,6 @@ import shutil
 import time
 import warnings
 import pickle
-# import feather
 import numpy as np
 import math
 import sys
@@ -31,7 +30,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torchvision import datasets, models, transforms
 
-# sys.path.insert(1,'/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/nc_model/nnt/model_training/')
 data_transforms = {
     'train': transforms.Compose([
         transforms.Pad((0,174,0,174),fill=(255,255,255)),
@@ -74,13 +72,9 @@ def test(args,model,test_loader,device,len):
     running_corrects=0
     with torch.no_grad():
         for data, target in test_loader:
-            # if args.gpu is not None:
-            #     data=data.cuda(args.gpu,non_blocking=True)
-            # target=target.cuda(args.gpu,non_blocking=True)
             data,target=data.to(device),target.to(device)
             output=model(data)
             _,preds=torch.max(output,1)
-            # loss=F.nll_loss(output,target)
             loss=F.cross_entropy(output,target,reduction='mean')
             test_loss+=loss.item()*data.size(0)
             running_corrects+=torch.sum(preds==target.data)
@@ -99,13 +93,9 @@ def metrics_eval(args,model,test_loader,device,len):
     target_coll_list=[]
     with torch.no_grad():
         for data, target in test_loader:
-            # if args.gpu is not None:
-            #     data=data.cuda(args.gpu,non_blocking=True)
-            # target=target.cuda(args.gpu,non_blocking=True)
             data,target=data.to(device),target.to(device)
             output=model(data)
             _,preds=torch.max(output,1)
-            # loss=F.nll_loss(output,target)
             loss=F.cross_entropy(output,target,reduction='mean')
             test_loss+=loss.item()*data.size(0)
             running_corrects+=torch.sum(preds==target.data)
@@ -151,7 +141,7 @@ def visualize_model(model,dataloaderslc,num_images=6):
 seed=2
 random.seed(seed)
 torch.manual_seed(seed)
-inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/runs/run_publish_final/"
+inputdir="LOCAL_PROJ_FOLDER"
 os.chdir(inputdir)
 ##load information table
 infortab=pd.read_csv(inputdir+'submitlist.tab',sep="\t",header=0)
@@ -159,7 +149,7 @@ infortab=infortab.astype({"batch_size": int,"test_batch_size": int})
 
 global dataset_sizes
 ##check validate data set
-rowi=5
+rowi=5#choose model 5 as the final working model
 device=torch.device('cpu')
     
 ##Loading data

@@ -9,7 +9,6 @@ import shutil
 import time
 import warnings
 import pickle
-# import feather
 import numpy as np
 import math
 import sys
@@ -35,7 +34,6 @@ import torchvision
 from torchvision import datasets, models, transforms
 from torchvision.models.resnet import model_urls
 
-# model_urls['resnet18']=model_urls['resnet18'].replace('https://', 'http://')
 
 listmodelfile={
     "resnet18": ('resnet18-5c106cde.pth',str),
@@ -44,7 +42,6 @@ listmodelfile={
     "resnet101": ('resnet101-5d3b4d8f.pth',str),
     "resnet152": ('resnet152-b121ed2d.pth',str)
 }
-# samplewholeselec=list(range(9995,10000))## the whole time series just for testing
 ##default parameters
 args_internal_dict={
     "batch_size": (4,int),
@@ -103,15 +100,9 @@ def train(args,model,train_loader,optimizer,epoch,device):
     trainloss=0.0
     running_corrects=0
     for batch_idx, (data, target) in enumerate(train_loader):
-        # print("checkerstart")
-        # if args.gpu is not None:
-        #     data=data.cuda(args.gpu,non_blocking=True)
-        #
-        # target=target.cuda(args.gpu,non_blocking=True)
         data,target=data.to(device),target.to(device)
         output=model(data)
         _,preds=torch.max(output,1)
-        # loss=F.nll_loss(output,target)
         loss=F.cross_entropy(output,target,reduction='mean')
         optimizer.zero_grad()
         loss.backward()
@@ -138,13 +129,9 @@ def test(args,model,test_loader,device):
     running_corrects=0
     with torch.no_grad():
         for data, target in test_loader:
-            # if args.gpu is not None:
-            #     data=data.cuda(args.gpu,non_blocking=True)
-            # target=target.cuda(args.gpu,non_blocking=True)
             data,target=data.to(device),target.to(device)
             output=model(data)
             _,preds=torch.max(output,1)
-            # loss=F.nll_loss(output,target)
             loss=F.cross_entropy(output,target,reduction='mean')
             test_loss+=loss.item()*data.size(0)
             running_corrects+=torch.sum(preds==target.data)
@@ -236,17 +223,7 @@ def main():
                       'You may see unexpected behavior when restarting '
                       'from checkpoints.')
     
-    # args.distributed=args.world_size > 1 or args.multiprocessing_distributed
     ngpus_per_node=torch.cuda.device_count()
-    # ngpus_per_node=1
-    # Since we have ngpus_per_node processes per node, the total world_size
-    # needs to be adjusted accordingly
-    ## args.world_size=ngpus_per_node*args.world_size
-    # Use torch.multiprocessing.spawn to launch distributed processes: the
-    # main_worker process function
-    ## arg_transf=copy.deepcopy(args)
-    ## arg_transf.ngpus_per_node=ngpus_per_node
-    ## mp.spawn(main_worker,nprocs=ngpus_per_node,args=(ngpus_per_node,args))
     main_worker(args.gpu,ngpus_per_node,args)
 
 def main_worker(gpu,ngpus_per_node,args):
@@ -255,12 +232,6 @@ def main_worker(gpu,ngpus_per_node,args):
     # args.gpu=gpu
     # if args.gpu is not None:
     #     print("Use GPU: {} for training".format(args.gpu))
-    
-    # For multiprocessing distributed training, rank needs to be the
-    # global rank among all the processes
-    ## args.rank=args.rank*ngpus_per_node+gpu
-    ## dist.init_process_group(backend=args.dist_backend,init_method="env://",#args.dist_url,
-    ## world_size=args.world_size,rank=args.rank)
     
     image_datasets={x: datasets.ImageFolder(os.path.join(inputdir,"LApops_classify",x),data_transforms[x]) for x in ['train','validate','test']}
     dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=args.batch_size,shuffle=True, num_workers=args.workers) for x in ['train','validate','test']}
@@ -283,20 +254,6 @@ def main_worker(gpu,ngpus_per_node,args):
     with open("pickle_dimdata.dat","wb") as f3:
         pickle.dump(dimdict,f3,protocol=4)
         
-    # model.eval()
-    # if args.gpu is not None:
-    #     torch.cuda.set_device(args.gpu)
-    #     model.cuda(args.gpu)
-    #     # When using a single GPU per process and per
-    #     # DistributedDataParallel, we need to divide the batch size
-    #     # ourselves based on the total number of GPUs we have
-    #     args.batch_size=int(args.batch_size/ngpus_per_node)
-    #     args.workers=int((args.workers+ngpus_per_node-1)/ngpus_per_node)
-    #     model=torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-    # else:
-    # DistributedDataParallel will divide and allocate batch_size to all
-    # available GPUs if device_ids are not set
-    
     # model_ft=models.resnet18()
     model_ft=models.__dict__[args.net_struct]()
     print(args.net_struct)
@@ -315,19 +272,6 @@ def main_worker(gpu,ngpus_per_node,args):
                 break
             paracounter=paracounter+1
     
-    # counti=0
-    # for name, param in model_ft.named_parameters():#len(model_ft.state_dict())
-    #         print(name)
-    #         counti=counti+1
-    
-    # match='layer4.0.conv1.weight'
-    # counti=1
-    # for name, param in model_ft.named_parameters():
-    #     # print(name)
-    #     if name==match:
-    #         print(counti)
-    #     counti=counti+1
-    
     model_ft=torch.nn.DataParallel(model_ft)
     if args.gpu_use==1:
         device=torch.device("cuda:0")#cpu
@@ -340,7 +284,6 @@ def main_worker(gpu,ngpus_per_node,args):
     elif args.optimizer=="adam":
         optimizer=optim.Adam(model_ft.parameters(),lr=args.learning_rate)
     
-    # optimizer=optim.Adam(model_ft.parameters(),lr=args.learning_rate)
     ## lr decay scheduler
     # scheduler=lr_scheduler.StepLR(optimizer,step_size=20,gamma=0.5)
     scheduler=lr_scheduler.ReduceLROnPlateau(optimizer,'max',factor=0.5)
@@ -351,15 +294,12 @@ def main_worker(gpu,ngpus_per_node,args):
         acc1=test(args,model_ft,dataloaders['validate'],device)##validation run
         if scheduler is not None:
             scheduler.step(acc1)
-        # test(args,model,traindataloader,device,ntime) # to record the performance on training sample with model.eval()
         if epoch==1:
             best_acc1=acc1
             best_train_acc=acctr
         
-        # is_best=acc1>best_acc1
         is_best=acc1>best_acc1
         is_best_train=acctr>best_train_acc
-        # best_acc1=max(acc1,best_acc1)
         best_acc1=max(acc1,best_acc1)
         best_train_acc=max(acctr,best_train_acc)
         save_checkpoint({
@@ -371,9 +311,6 @@ def main_worker(gpu,ngpus_per_node,args):
             'optimizer': optimizer.state_dict(),
             'args_input': args,
         },is_best,is_best_train)
-        # device=torch.device('cpu')
-        # # model=TheModelClass(*args, **kwargs)
-        # model.load_state_dict(torch.load('./1/checkpoint.resnetode.tar',map_location=device))
     
     # visualize_model(model_ft,dataloaders['test'])
     acc1_test=test(args,model_ft,dataloaders['test'],device)##test and validate with same size
