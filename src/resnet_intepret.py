@@ -82,7 +82,7 @@ def imshow(inp, title=None):
 seed=2
 random.seed(seed)
 torch.manual_seed(seed)
-inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/runs/resrun_rep/"
+inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/runs/run_publish_final/"
 os.chdir(inputdir)
 
 global dataset_sizes
@@ -92,7 +92,7 @@ device=torch.device('cpu')
 ##Loading data
 loaddic=torch.load("./res/"+str(rowi)+"/model_best.resnetode.tar",map_location=device)
 args=loaddic["args_input"]
-image_datasets={x: datasets.ImageFolder(os.path.join(inputdir,'data/LApops_test_intepret/',x),data_transforms[x]) for x in ['test']}
+image_datasets={x: datasets.ImageFolder(os.path.join(inputdir,'data/LApops_classify_intepret/',x),data_transforms[x]) for x in ['test']}
 dataloaders={x: torch.utils.data.DataLoader(image_datasets[x],batch_size=1,shuffle=True, num_workers=0) for x in ['test']}#get one figure one time
 dataset_sizes={x: len(image_datasets[x]) for x in ['test']}
 class_names=image_datasets['test'].classes
@@ -109,6 +109,11 @@ default_cmap=LinearSegmentedColormap.from_list('custom blue',
                                                   (1, '#000000')], N=256)
 baseline=2.6400# ~maximum in the image, white place
 for batch_idx, (input, target) in enumerate(dataloaders['test']):
+     image_input=input.cpu().data[0].numpy().transpose((1,2,0))
+     mean=np.array([0.485,0.456,0.406])
+     std=np.array([0.229,0.224,0.225])
+     image_input=std*image_input+mean
+     image_input=np.clip(image_input,0,1)
      output=model_ft(input)
      prediction_score,pred_label_idx=torch.topk(output,1)
      pred_clname=class_names[pred_label_idx]

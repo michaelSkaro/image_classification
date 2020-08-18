@@ -151,7 +151,7 @@ def visualize_model(model,dataloaderslc,num_images=6):
 seed=2
 random.seed(seed)
 torch.manual_seed(seed)
-inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/runs/resrun_rep/"
+inputdir="/Users/yuewu/Dropbox (Edison_Lab@UGA)/Projects/Bioinformatics_modeling/emi_nnt_image/runs/run_publish_final/"
 os.chdir(inputdir)
 ##load information table
 infortab=pd.read_csv(inputdir+'submitlist.tab',sep="\t",header=0)
@@ -161,6 +161,7 @@ global dataset_sizes
 ##check validate data set
 rowi=5
 device=torch.device('cpu')
+    
 ##Loading data
 loaddic=torch.load("./res/"+str(rowi)+"/model_best.resnetode.tar",map_location=device)
 args=loaddic["args_input"]
@@ -191,7 +192,7 @@ fig.savefig(inputdir+"res/test.pdf")
 plt.cla()
 
 # accuracy by class(phenotypes)
-image_datasets_test={x: datasets.ImageFolder(os.path.join("./data/LApops_classify_class/",x),data_transforms['test']) for x in ['BULKY','WRAP','WT']}
+image_datasets_test={x: datasets.ImageFolder(os.path.join("./data/LApops_classify_singleclass/test/",x),data_transforms['test']) for x in ['BULKY','WRAP','WT']}
 dataloaders_test={x: torch.utils.data.DataLoader(image_datasets_test[x],batch_size=args.batch_size,shuffle=True, num_workers=0) for x in ['BULKY','WRAP','WT']}
 dataset_sizes={x: len(image_datasets_test[x]) for x in ['BULKY','WRAP','WT']}
 
